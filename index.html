@@ -168,7 +168,6 @@
                 <!-- Search Bar -->
                 <div class="mb-8 p-6 bg-white rounded-lg shadow">
                     <div class="relative">
-                        <!-- THIS IS THE LINE I FIXED (removed invalid comment) -->
                         <input type="text" id="search-bar"
                             placeholder="Search for destinations, hotels, or activities..."
                             class="w-full p-4 pl-12 text-lg border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -185,7 +184,6 @@
                 <!-- Featured Destinations -->
                 <section>
                     <h2 class="text-2xl font-semibold text-gray-800 mb-4 px-2">Featured Destinations</h2>
-                    <!-- THIS IS THE OTHER LINE I FIXED (removed invalid comment) -->
                     <div id="destination-cards-container" class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
 
                         <!-- Destination Card 1 -->
@@ -376,7 +374,8 @@
     <!-- All JavaScript Logic -->
     <script>
         // --- Configuration ---
-        const API_BASE_URL = 'http://localhost:3000';
+        // === THIS IS THE LINE I CHANGED ===
+        const API_BASE_URL = 'https://travel-backend-ydgz.onrender.com';
 
         // --- Element Selectors ---
         const mainTitle = document.getElementById('main-title');
