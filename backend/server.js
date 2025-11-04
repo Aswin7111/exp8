@@ -11,10 +11,7 @@ dotenv.config();
 const app = express();
 
 // --- Middleware ---
-// Use CORS to allow requests from any origin.
-// This is necessary for your index.html to talk to the backend.
 app.use(cors()); 
-// Parse incoming JSON requests
 app.use(express.json());
 
 // --- Environment Variables ---
@@ -62,27 +59,72 @@ const UserSchema = new mongoose.Schema({
     default: Date.now
   }
 });
-
 // Add indexes for faster lookups
 UserSchema.index({ email: 1 });
 UserSchema.index({ username: 1 });
-
 const User = mongoose.model('User', UserSchema);
+
+
+// --- === NEW: Booking Model (Database Schema) === ---
+const BookingSchema = new mongoose.Schema({
+  // This links the booking to a specific user
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    required: true,
+    ref: 'User'
+  },
+  destinationName: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  price: {
+    type: String,
+    required: true,
+  },
+  bookedAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+const Booking = mongoose.model('Booking', BookingSchema);
+
+
+// --- === NEW: Authentication Middleware === ---
+// This function checks for the token in the request headers
+const auth = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ message: 'No token, authorization denied.' });
+  }
+
+  try {
+    // Get token from header (e.g., "Bearer <token>")
+    const token = authHeader.split(' ')[1];
+    
+    // Verify token
+    const decoded = jwt.verify(token, JWT_SECRET);
+    
+    // Add user from payload to the request object
+    // Now all protected routes will have access to req.user
+    req.user = decoded; 
+    next();
+  } catch (error) {
+    res.status(401).json({ message: 'Token is not valid.' });
+  }
+};
 
 
 // --- API Routes ---
 
-// 1. User Registration
+// 1. User Registration (Public)
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { full_name, email, username, password } = req.body;
-
-    // Basic validation
     if (!full_name || !email || !username || !password) {
       return res.status(400).json({ message: "Please fill in all fields." });
     }
-
-    // Check for duplicate username or email
     const existingUser = await User.findOne({ $or: [{ email }, { username }] });
     if (existingUser) {
       if (existingUser.email === email) {
@@ -92,27 +134,18 @@ app.post('/api/auth/register', async (req, res) => {
         return res.status(400).json({ message: "Username is already taken." });
       }
     }
-
-    // Hash the password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
-
-    // Create and save the new user
     const newUser = new User({
       full_name,
       email,
       username,
       password: hashedPassword
     });
-
     const savedUser = await newUser.save();
-
-    // Create a JWT token
     const token = jwt.sign({ id: savedUser._id, username: savedUser.username }, JWT_SECRET, {
-      expiresIn: '24h' // Token expires in 24 hours
+      expiresIn: '24h'
     });
-
-    // Send token and success message back
     res.status(201).json({
       token,
       message: "User registered successfully!",
@@ -122,44 +155,32 @@ app.post('/api/auth/register', async (req, res) => {
         username: savedUser.username
       }
     });
-
   } catch (error) {
     console.error("Registration Error:", error);
     res.status(500).json({ message: "Server error during registration." });
   }
 });
 
-// 2. User Login
+// 2. User Login (Public)
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { usernameOrEmail, password } = req.body;
-
-    // Basic validation
     if (!usernameOrEmail || !password) {
       return res.status(400).json({ message: "Please provide username/email and password." });
     }
-
-    // Find the user by either username or email
     const user = await User.findOne({
       $or: [{ email: usernameOrEmail.toLowerCase() }, { username: usernameOrEmail.toLowerCase() }]
     });
-
     if (!user) {
       return res.status(400).json({ message: "Invalid credentials." });
     }
-
-    // Check if the password is correct
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: "Invalid credentials." });
     }
-
-    // Create a JWT token
     const token = jwt.sign({ id: user._id, username: user.username }, JWT_SECRET, {
-      expiresIn: '24h' // Token expires in 24 hours
+      expiresIn: '24h'
     });
-
-    // Send token and success message back
     res.status(200).json({
       token,
       message: "Login successful!",
@@ -169,16 +190,56 @@ app.post('/api/auth/login', async (req, res) => {
         username: user.username
       }
     });
-
   } catch (error) {
     console.error("Login Error:", error);
     res.status(500).json({ message: "Server error during login." });
   }
 });
 
-// Test route
+// 3. Test route (Public)
 app.get('/api', (req, res) => {
   res.json({ message: "Welcome to the Travel & Tourism API!" });
+});
+
+
+// --- === NEW: Booking Routes (Protected) === ---
+
+// 4. Create a new Booking (Protected)
+// We add the 'auth' middleware here.
+// This route will not work unless a valid token is sent.
+app.post('/api/bookings', auth, async (req, res) => {
+  try {
+    const { destinationName, price } = req.body;
+    
+    // req.user.id comes from the auth middleware
+    const newBooking = new Booking({
+      userId: req.user.id, 
+      destinationName,
+      price
+    });
+
+    const savedBooking = await newBooking.save();
+    res.status(201).json(savedBooking);
+
+  } catch (error) {
+    console.error("Booking Error:", error);
+    res.status(500).json({ message: "Server error while creating booking." });
+  }
+});
+
+// 5. Get all bookings for the logged-in user (Protected)
+app.get('/api/bookings', auth, async (req, res) => {
+  try {
+    // req.user.id comes from the auth middleware
+    // This finds all bookings that match the logged-in user's ID
+    const bookings = await Booking.find({ userId: req.user.id });
+    
+    res.status(200).json(bookings);
+
+  } catch (error) {
+    console.error("Get Bookings Error:", error);
+    res.status(500).json({ message: "Server error while fetching bookings." });
+  }
 });
 
 
@@ -186,3 +247,4 @@ app.get('/api', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
+
